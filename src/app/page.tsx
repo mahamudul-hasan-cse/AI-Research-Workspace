@@ -10,6 +10,7 @@ const descriptions: Record<string, string> = {
   "/history": "Review past sessions and activity.",
   "/settings": "Configure your workspace preferences.",
   "/health": "Check that the app and its data layer respond.",
+  "/playground": "Try accessible UI components built from scratch.",
 };
 
 export default function HomePage() {

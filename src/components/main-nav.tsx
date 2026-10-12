@@ -24,7 +24,7 @@ export function MainNav() {
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`rounded-md px-2 py-2 text-sm font-medium transition-colors xl:px-3 ${
                     active
                       ? "bg-accent-soft text-accent"
                       : "text-muted hover:bg-surface-muted hover:text-foreground"
