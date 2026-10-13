@@ -52,7 +52,7 @@ function SlowResponseNotice() {
   if (!slow) return null;
   return (
     <p className="text-xs text-muted">
-      Still working. Responses can take longer when Gemini is busy.
+      Still working. Responses can take longer when the AI provider is busy.
     </p>
   );
 }

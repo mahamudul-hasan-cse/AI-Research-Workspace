@@ -22,7 +22,7 @@ export const SABOTAGE_MODES = [
   "malformed-tool", // server: a tool result that does not match its schema
   "empty-tool", // server: a valid tool result with no items
   "slow", // server: long delay before the first token, then a mock reply
-  "mock", // server: a successful mock reply (no Gemini call)
+  "mock", // server: a successful mock reply (no model call)
   "render", // client: the chat component throws while rendering
 ] as const;
 

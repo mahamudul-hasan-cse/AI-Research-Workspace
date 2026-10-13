@@ -1,4 +1,3 @@
-import { google } from "@ai-sdk/google";
 import {
   consumeStream,
   convertToModelMessages,
@@ -11,10 +10,11 @@ import {
 } from "ai";
 import {
   CHAT_LIMITS,
-  GEMINI_MODEL_ID,
+  AI_MODEL_ID,
   GENERATION_CONFIG,
-  GOOGLE_PROVIDER_OPTIONS,
   MAX_STEPS,
+  OPENROUTER_PROVIDER_OPTIONS,
+  openrouter,
   STREAM_SMOOTHING,
   SYSTEM_PROMPT,
 } from "@/lib/ai/config";
@@ -65,6 +65,27 @@ function repairToolOutputs(messages: unknown): unknown {
   });
 }
 
+const STOPPED_TOOL_NOTE =
+  "[The user pressed Stop before the research analysis ran. Do not run it now unless the user asks again.]";
+
+/**
+ * A tool call cut off by Stop has no result and is dropped when converting, which
+ * makes the user's request look unanswered; models then re-run it on the next
+ * turn. A short note in its place records that the user cancelled it.
+ */
+function markStoppedToolCalls(message: ResearchUIMessage): ResearchUIMessage {
+  if (message.role !== "assistant") return message;
+  return {
+    ...message,
+    parts: message.parts.map((part) =>
+      part.type === `tool-${ANALYZE_RESEARCH_TOPIC}` &&
+      (part.state === "input-streaming" || part.state === "input-available")
+        ? { type: "text", text: STOPPED_TOOL_NOTE }
+        : part,
+    ),
+  };
+}
+
 function messageLength(message: ResearchUIMessage) {
   return message.parts.reduce(
     (total, part) => total + (part.type === "text" ? part.text.length : 0),
@@ -73,9 +94,9 @@ function messageLength(message: ResearchUIMessage) {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     return textError(
-      "The assistant is not configured: GOOGLE_GENERATIVE_AI_API_KEY is missing on the server.",
+      "The assistant is not configured: OPENROUTER_API_KEY is missing on the server.",
       503,
     );
   }
@@ -121,19 +142,19 @@ export async function POST(req: Request) {
   if (sabotaged) return sabotaged;
 
   const result = streamText({
-    model: google(GEMINI_MODEL_ID),
+    model: openrouter(AI_MODEL_ID),
     instructions: SYSTEM_PROMPT,
-    // Tool calls cut off by Stop have no result; drop them instead of failing the turn.
-    messages: await convertToModelMessages(messages, {
+    // Any remaining tool call without a result is dropped instead of failing the turn.
+    messages: await convertToModelMessages(messages.map(markStoppedToolCalls), {
       tools: researchTools,
       ignoreIncompleteToolCalls: true,
     }),
     tools: researchTools,
     stopWhen: isStepCount(MAX_STEPS),
     ...GENERATION_CONFIG,
-    providerOptions: { google: GOOGLE_PROVIDER_OPTIONS },
+    providerOptions: { openrouter: OPENROUTER_PROVIDER_OPTIONS },
     experimental_transform: smoothStream(STREAM_SMOOTHING),
-    // Aborts the Gemini request when the client stops or disconnects.
+    // Aborts the OpenRouter request when the client stops or disconnects.
     abortSignal: req.signal,
   });
 

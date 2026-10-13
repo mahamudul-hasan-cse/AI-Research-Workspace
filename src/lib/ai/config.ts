@@ -1,13 +1,22 @@
-import type { GoogleLanguageModelOptions } from "@ai-sdk/google";
+import {
+  createOpenRouter,
+  type OpenRouterProviderOptions,
+} from "@openrouter/ai-sdk-provider";
 
 /**
  * Central AI configuration for the research assistant. The API key is NOT
- * configured here: the Google provider reads GOOGLE_GENERATIVE_AI_API_KEY from
- * the server environment, so it never reaches the browser bundle.
+ * configured here: the OpenRouter provider reads OPENROUTER_API_KEY from the
+ * server environment, so it never reaches the browser bundle. Import this
+ * module only from server code.
  */
 
-/** Gemini 3.8 Flash: free of charge on the Gemini API free tier. */
-export const GEMINI_MODEL_ID = "gemini-3.8-flash";
+export const openrouter = createOpenRouter({
+  compatibility: "strict",
+  appName: "AI Research Workspace",
+});
+
+/** Qwen3.8 Flash on OpenRouter: a general chat/reasoning model with streaming and tool calling. */
+export const AI_MODEL_ID = "qwen/qwen3.8-flash";
 
 export const SYSTEM_PROMPT = `You are the central research assistant for AI Research Workspace, an app where people explore and develop research ideas.
 
@@ -36,19 +45,22 @@ Formatting:
 - Responses are displayed as plain text. Do not use Markdown syntax such as **bold**, # headings, or tables.
 - Use short paragraphs, and simple "- " bullets or "1. " numbered lists when structure helps.`;
 
-/** Passed to streamText; leaves temperature at Gemini 3's recommended default. */
+/** Passed to streamText; leaves temperature at the model's default. */
 export const GENERATION_CONFIG = {
   maxOutputTokens: 4096,
 } as const;
 
-/** "low" thinking keeps time-to-first-token and free-tier token usage down. */
-export const GOOGLE_PROVIDER_OPTIONS = {
-  thinkingConfig: { thinkingLevel: "low" },
-} satisfies GoogleLanguageModelOptions;
+/**
+ * Low reasoning effort keeps time-to-first-token and token cost down; the
+ * reasoning text itself is not shown in the chat, so it is excluded.
+ */
+export const OPENROUTER_PROVIDER_OPTIONS = {
+  reasoning: { effort: "low", exclude: true },
+} satisfies OpenRouterProviderOptions;
 
 /**
- * Gemini delivers text in large batches; re-chunking it word by word makes the
- * response visibly stream instead of appearing in a few big jumps.
+ * Providers can deliver text in large batches; re-chunking it word by word
+ * makes the response visibly stream instead of appearing in a few big jumps.
  */
 export const STREAM_SMOOTHING = {
   chunking: "word",

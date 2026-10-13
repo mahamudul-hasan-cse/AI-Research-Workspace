@@ -14,7 +14,7 @@ import {
 
 /**
  * TEST-ONLY synthetic responses for /api/chat. Returns undefined (so the real
- * Gemini path runs) unless sabotage is enabled and the request asks for it.
+ * model path runs) unless sabotage is enabled and the request asks for it.
  */
 export function sabotageResponse(req: Request): Response | undefined {
   if (!CHAT_SABOTAGE_ENABLED) return undefined;
@@ -93,7 +93,7 @@ async function runScenario(
       await streamText(writer, "t1", "This simulated reply arrived after a long delay. ", signal);
       break;
     case "mock":
-      await streamText(writer, "t1", "This is a simulated reply from test mode, so no Gemini request was made. ", signal);
+      await streamText(writer, "t1", "This is a simulated reply from test mode, so no model request was made. ", signal);
       break;
   }
   writer.write({ type: "finish-step" });

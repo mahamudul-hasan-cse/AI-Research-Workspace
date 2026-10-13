@@ -3,20 +3,28 @@ AI-Research-Workspace
 
 ## AI assistant setup
 
-The `/assistant` chat streams responses from Google Gemini through the
-server-side `/api/chat` route.
+The `/assistant` chat streams responses from
+[OpenRouter](https://openrouter.ai) through the server-side `/api/chat` route,
+using the `@openrouter/ai-sdk-provider` package with the Vercel AI SDK.
 
-1. Create a free API key in [Google AI Studio](https://aistudio.google.com/apikey).
+**Model:** `qwen/qwen3.8-flash` (Qwen3.8 Flash), a general chat and reasoning
+model that supports streaming and tool calling. It is configured, with the
+provider options, in `src/lib/ai/config.ts`. OpenRouter usage is billed per
+token to your OpenRouter account.
+
+1. Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)
+   and add credits to the account.
 2. Create `.env.local` in the project root (it is git-ignored) containing:
 
    ```
-   GOOGLE_GENERATIVE_AI_API_KEY=your-key-here
+   OPENROUTER_API_KEY=your-key-here
    ```
 
 3. Restart `npm run dev`.
 
-The key is only read on the server. Do not prefix it with `NEXT_PUBLIC_`.
-On Vercel, add the same variable under Project Settings → Environment Variables.
+`OPENROUTER_API_KEY` is only read on the server. Do not prefix it with
+`NEXT_PUBLIC_`. On Vercel, add the same variable under Project Settings →
+Environment Variables.
 
 ## AI Tool Contract
 
@@ -59,7 +67,7 @@ human-readable message, shown in the chat as a "Research analysis failed" card.
 **When the model should call it:** when the user asks for topic evaluation,
 research-readiness analysis, research planning, or structured research guidance
 for a topic. It should not be called for general questions, explanations,
-summaries, or casual conversation. Gemini decides when to call it, guided by
+summaries, or casual conversation. The model decides when to call it, guided by
 the system prompt in `src/lib/ai/config.ts`.
 
 **UI:** each tool call is rendered as a typed `tool-analyzeResearchTopic` part
@@ -108,13 +116,13 @@ a comma-separated list; each chat request consumes the next mode:
 | ---------------- | ----------------------------------------------- |
 | `network`        | `fetch` rejects before reaching the server      |
 | `midstream`      | Partial text, then a stream error               |
-| `rate-limit`     | The mapped Gemini quota (429) error             |
+| `rate-limit`     | The mapped provider rate-limit (429) error      |
 | `malformed-tool` | A tool result that does not match its schema    |
 | `empty-tool`     | A valid tool result with no findings            |
 | `slow`           | ~9 s before the first token                     |
-| `mock`           | A successful reply without calling Gemini       |
+| `mock`           | A successful reply without calling the model    |
 | `render`         | The chat component throws, to test `error.tsx`  |
 
 For example, `/assistant?sabotage=midstream,mock` fails the first reply
-midway and lets the retry succeed. Simulated modes never call Gemini, so they
-use no quota.
+midway and lets the retry succeed. Simulated modes never call OpenRouter, so they
+cost nothing.
