@@ -3,20 +3,23 @@ import {
   consumeStream,
   convertToModelMessages,
   createUIMessageStreamResponse,
+  isStepCount,
   safeValidateUIMessages,
   smoothStream,
   streamText,
   toUIMessageStream,
-  type UIMessage,
 } from "ai";
 import {
   CHAT_LIMITS,
   GEMINI_MODEL_ID,
   GENERATION_CONFIG,
   GOOGLE_PROVIDER_OPTIONS,
+  MAX_STEPS,
   STREAM_SMOOTHING,
   SYSTEM_PROMPT,
 } from "@/lib/ai/config";
+import { toClientErrorMessage } from "@/lib/ai/errors";
+import { researchTools, type ResearchUIMessage } from "@/lib/ai/tools";
 
 export const maxDuration = 60;
 
@@ -28,22 +31,11 @@ function textError(message: string, status: number) {
   });
 }
 
-function messageLength(message: UIMessage) {
+function messageLength(message: ResearchUIMessage) {
   return message.parts.reduce(
     (total, part) => total + (part.type === "text" ? part.text.length : 0),
     0,
   );
-}
-
-function toClientErrorMessage(error: unknown) {
-  const detail = error instanceof Error ? error.message : String(error);
-  if (/quota|rate limit|resource.?exhausted|429/i.test(detail)) {
-    return "The Gemini free-tier quota (per-minute or daily) was reached. Please try again later.";
-  }
-  if (/api key|api_key|permission|unauthori[sz]ed|403/i.test(detail)) {
-    return "Gemini rejected the API key. Check GOOGLE_GENERATIVE_AI_API_KEY on the server.";
-  }
-  return "The assistant could not complete the response. Please try again.";
 }
 
 export async function POST(req: Request) {
@@ -61,8 +53,9 @@ export async function POST(req: Request) {
     return textError("Request body must be valid JSON.", 400);
   }
 
-  const validation = await safeValidateUIMessages({
+  const validation = await safeValidateUIMessages<ResearchUIMessage>({
     messages: (body as { messages?: unknown } | null)?.messages,
+    tools: researchTools,
   });
   if (!validation.success) {
     return textError("Request must include a valid messages array.", 400);
@@ -92,7 +85,13 @@ export async function POST(req: Request) {
   const result = streamText({
     model: google(GEMINI_MODEL_ID),
     instructions: SYSTEM_PROMPT,
-    messages: await convertToModelMessages(messages),
+    // Tool calls cut off by Stop have no result; drop them instead of failing the turn.
+    messages: await convertToModelMessages(messages, {
+      tools: researchTools,
+      ignoreIncompleteToolCalls: true,
+    }),
+    tools: researchTools,
+    stopWhen: isStepCount(MAX_STEPS),
     ...GENERATION_CONFIG,
     providerOptions: { google: GOOGLE_PROVIDER_OPTIONS },
     experimental_transform: smoothStream(STREAM_SMOOTHING),
@@ -101,10 +100,11 @@ export async function POST(req: Request) {
   });
 
   return createUIMessageStreamResponse({
-    stream: toUIMessageStream({
+    stream: toUIMessageStream<typeof researchTools, ResearchUIMessage>({
       stream: result.stream,
+      tools: researchTools,
       onError: (error) => {
-        console.error("[api/chat] Gemini stream error:", error);
+        console.error("[api/chat] stream error:", error);
         return toClientErrorMessage(error);
       },
     }),

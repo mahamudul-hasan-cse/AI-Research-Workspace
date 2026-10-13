@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport } from "ai";
 import {
   useEffect,
   useId,
@@ -10,16 +10,39 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import type { AnalyzeResearchTopicPart, ResearchUIMessage } from "@/lib/ai/tools";
+import { ResearchToolPart } from "./research-tool-part";
 
-const transport = new DefaultChatTransport({ api: "/api/chat" });
+const transport = new DefaultChatTransport<ResearchUIMessage>({ api: "/api/chat" });
 
 /** Distance (px) from the bottom within which the view stays pinned to new content. */
 const PIN_THRESHOLD = 80;
 
-function messageText(message: UIMessage) {
-  return message.parts
-    .map((part) => (part.type === "text" ? part.text : ""))
-    .join("");
+type Segment =
+  | { kind: "text"; key: string; text: string }
+  | { kind: "tool"; key: string; part: AnalyzeResearchTopicPart };
+
+/** Groups a message's parts into renderable text runs and tool calls, in order. */
+function toSegments(message: ResearchUIMessage): Segment[] {
+  const segments: Segment[] = [];
+  message.parts.forEach((part, index) => {
+    if (part.type === "text") {
+      if (part.text === "") return;
+      const last = segments.at(-1);
+      if (last?.kind === "text") last.text += part.text;
+      else segments.push({ kind: "text", key: `text-${index}`, text: part.text });
+    } else if (part.type === "tool-analyzeResearchTopic") {
+      segments.push({ kind: "tool", key: part.toolCallId, part });
+    }
+  });
+  return segments;
+}
+
+function isToolPending(segment: Segment | undefined) {
+  return (
+    segment?.kind === "tool" &&
+    (segment.part.state === "input-streaming" || segment.part.state === "input-available")
+  );
 }
 
 function isNearBottom(element: HTMLElement) {
@@ -32,10 +55,11 @@ function isNearBottom(element: HTMLElement) {
 export function Chat() {
   // An explicit id keeps useChat from calling Math.random() during prerender.
   const chatId = useId();
-  const { messages, sendMessage, status, stop, error, clearError } = useChat({
-    id: chatId,
-    transport,
-  });
+  const { messages, sendMessage, status, stop, error, clearError } =
+    useChat<ResearchUIMessage>({
+      id: chatId,
+      transport,
+    });
   const [input, setInput] = useState("");
   const [showJump, setShowJump] = useState(false);
   const [stopped, setStopped] = useState(false);
@@ -48,9 +72,13 @@ export function Chat() {
 
   const busy = status === "submitted" || status === "streaming";
   const lastMessage = messages.at(-1);
+  const lastSegments =
+    lastMessage?.role === "assistant" ? toSegments(lastMessage) : [];
+  const lastSegment = lastSegments.at(-1);
+  const analyzing = busy && isToolPending(lastSegment);
+  // Shown until text or a tool call appears, and between a tool result and the follow-up text.
   const waitingForText =
-    busy &&
-    (lastMessage?.role !== "assistant" || messageText(lastMessage) === "");
+    busy && (lastSegment === undefined || (lastSegment.kind === "tool" && !analyzing));
   const canSend = !busy && input.trim().length > 0;
 
   useEffect(() => {
@@ -110,6 +138,7 @@ export function Chat() {
 
   let statusMessage = "";
   if (status === "submitted") statusMessage = "Assistant is thinking.";
+  else if (analyzing) statusMessage = "Assistant is analyzing the research topic.";
   else if (status === "streaming") statusMessage = "Assistant is responding.";
   else if (status === "error") statusMessage = "The assistant response failed.";
   else if (stopped) statusMessage = "Response stopped.";
@@ -149,9 +178,17 @@ export function Chat() {
           ) : (
             <ol className="mx-auto flex max-w-3xl flex-col gap-4">
               {messages.map((message) => {
-                const text = messageText(message);
-                if (message.role === "assistant" && text === "") return null;
-                return <ChatMessage key={message.id} role={message.role} text={text} />;
+                const segments = toSegments(message);
+                if (segments.length === 0) return null;
+                return message.role === "user" ? (
+                  <UserMessage key={message.id} segments={segments} />
+                ) : (
+                  <AssistantMessage
+                    key={message.id}
+                    segments={segments}
+                    active={busy && message.id === lastMessage?.id}
+                  />
+                );
               })}
               {waitingForText ? (
                 <li className="flex justify-start">
@@ -235,29 +272,41 @@ export function Chat() {
   );
 }
 
-function ChatMessage({ role, text }: { role: UIMessage["role"]; text: string }) {
-  const isUser = role === "user";
+function MessageText({ text }: { text: string }) {
   return (
-    <li className={isUser ? "flex justify-end" : "flex justify-start"}>
-      <div
-        className={
-          isUser
-            ? "max-w-[85%] min-w-0 rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-accent-foreground"
-            : "max-w-full min-w-0 rounded-2xl rounded-bl-sm border border-border bg-surface-muted px-4 py-3 sm:max-w-[90%]"
-        }
-      >
-        <p
-          className={
-            isUser
-              ? "sr-only"
-              : "mb-1 text-xs font-semibold tracking-wide text-muted uppercase"
-          }
-        >
-          {isUser ? "You said:" : "Assistant"}
+    <p className="text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] sm:text-[0.9375rem]">
+      {text}
+    </p>
+  );
+}
+
+function UserMessage({ segments }: { segments: Segment[] }) {
+  return (
+    <li className="flex justify-end">
+      <div className="max-w-[85%] min-w-0 rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-accent-foreground">
+        <p className="sr-only">You said:</p>
+        {segments.map((segment) =>
+          segment.kind === "text" ? <MessageText key={segment.key} text={segment.text} /> : null,
+        )}
+      </div>
+    </li>
+  );
+}
+
+function AssistantMessage({ segments, active }: { segments: Segment[]; active: boolean }) {
+  return (
+    <li className="flex justify-start">
+      <div className="flex max-w-full min-w-0 flex-col gap-3 rounded-2xl rounded-bl-sm border border-border bg-surface-muted px-4 py-3 sm:max-w-[90%]">
+        <p className="-mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
+          Assistant
         </p>
-        <p className="text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] sm:text-[0.9375rem]">
-          {text}
-        </p>
+        {segments.map((segment) =>
+          segment.kind === "text" ? (
+            <MessageText key={segment.key} text={segment.text} />
+          ) : (
+            <ResearchToolPart key={segment.key} part={segment.part} active={active} />
+          ),
+        )}
       </div>
     </li>
   );

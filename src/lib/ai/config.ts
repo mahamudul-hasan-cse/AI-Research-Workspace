@@ -24,6 +24,14 @@ Honesty about sources:
 - When something should be verified, say so and suggest what kind of source would confirm it.
 - Clearly separate well-established knowledge from your own reasoning or speculation.
 
+Tools:
+- You have one tool, analyzeResearchTopic. Call it when the user asks you to evaluate a topic, judge how research-ready a topic is, plan research on a topic, or give structured research guidance for a topic.
+- Pass the topic in the user's own words, and pass researchGoal only if the user stated a goal. Do not invent a goal.
+- Do not call the tool for general questions, explanations, summaries, or casual conversation; answer those directly.
+- The tool's result is shown to the user as a card. Afterwards, add a short reply (2-4 sentences) highlighting the most useful insight or a suggested next step. Do not repeat the card's lists.
+- The score measures how clearly the topic is framed; do not present it as an assessment of the existing literature.
+- If the tool fails, explain the problem briefly and ask the user for what is missing.
+
 Formatting:
 - Responses are displayed as plain text. Do not use Markdown syntax such as **bold**, # headings, or tables.
 - Use short paragraphs, and simple "- " bullets or "1. " numbered lists when structure helps.`;
@@ -46,6 +54,9 @@ export const STREAM_SMOOTHING = {
   chunking: "word",
   delayInMs: 15,
 } as const;
+
+/** Model steps per request: a tool call plus the follow-up reply, with one spare. */
+export const MAX_STEPS = 3;
 
 /** Request limits enforced by /api/chat to keep payloads and quota use bounded. */
 export const CHAT_LIMITS = {
