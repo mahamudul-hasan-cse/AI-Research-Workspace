@@ -162,9 +162,11 @@ lazy Three.js chunk is about **951 KB minified** (about **280 KB gzip**), domina
 exact hashes change each build — search `.next/static/chunks/` for the dynamic
 import after building.
 
-**Performance choices:** small low-segment sphere geometry, capped device pixel
-ratio (`dpr` max 1.75), selection state kept in React (not per-frame), edges
-precomputed with `useMemo`, and no external models.
+**Performance choices:** Three.js loads only after **Show 3D view** (plus idle
+deferral), small low-segment sphere geometry, capped device pixel ratio (`dpr`
+max 1.75), selection state kept in React (not per-frame), edges precomputed with
+`useMemo`, and no external models. See `AUDIT.md` for Lighthouse before/after
+numbers.
 
 **Fallbacks:** if WebGL is missing, a static map and the same node list are
 shown. With `prefers-reduced-motion: reduce`, orbit damping is disabled and

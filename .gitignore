@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/docs/audit/**/*.json
+/docs/audit/**/*.html
 /playwright-report
 /test-results
 /blob-report

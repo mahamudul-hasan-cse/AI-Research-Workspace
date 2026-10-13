@@ -5,6 +5,7 @@ import { navItems } from "@/lib/navigation";
 const descriptions: Record<string, string> = {
   "/workspaces": "Group research into focused projects.",
   "/assistant": "Ask questions about your research.",
+  "/visualize": "Explore a thesis topic and its connected research nodes in 3D.",
   "/sources": "Collect papers, links, and documents.",
   "/saved": "Keep the findings worth revisiting.",
   "/history": "Review past sessions and activity.",

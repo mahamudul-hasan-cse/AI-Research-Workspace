@@ -18,7 +18,8 @@ test.describe("Visualize", () => {
     await page.getByRole("button", { name: /Foley et al/i }).click();
     await expect(page.getByRole("region", { name: /selected node/i })).toContainText("Foley et al");
 
-    await page.getByRole("button", { name: /Reset 3D view/i }).click();
+    await page.getByRole("button", { name: "Show 3D view" }).click();
+    await page.getByRole("button", { name: "Reset view" }).click();
 
     await page.getByRole("button", { name: /Field season constraints/i }).click();
     await expect(page.getByRole("region", { name: /selected node/i })).toContainText(

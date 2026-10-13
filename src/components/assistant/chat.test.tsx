@@ -15,9 +15,10 @@ function setup() {
   return { user, input, sendButton, conversation };
 }
 
-/** The live status line screen readers hear (sr-only, role="status"). */
+/** Phase announcements for the chat (not tool sub-status regions). */
 function chatStatus() {
-  return screen.getByRole("status");
+  const chat = screen.getByRole("region", { name: "Research assistant chat" });
+  return within(chat).getAllByRole("status")[0];
 }
 
 describe("Chat", () => {

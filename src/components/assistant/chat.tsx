@@ -251,7 +251,7 @@ export function Chat() {
       aria-label="Research assistant chat"
       className="flex h-[calc(100dvh-15rem)] min-h-[20rem] flex-col overflow-hidden rounded-card border border-border bg-surface sm:h-[calc(100dvh-17rem)]"
     >
-      <p role="status" className="sr-only">
+      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {statusMessage}
       </p>
 
@@ -344,7 +344,7 @@ export function Chat() {
               className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-semibold duration-150 animate-in fade-in-0 hover:bg-surface-muted motion-safe:zoom-in-90 sm:px-4"
             >
               <Square aria-hidden="true" className="size-3.5 fill-current" />
-              <span className="max-sm:sr-only">Stop</span>
+              <span>Stop</span>
             </button>
           ) : null}
           <SendButton state={sendState} canSend={canSend} />

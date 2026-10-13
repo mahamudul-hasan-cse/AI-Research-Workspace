@@ -77,6 +77,23 @@ function ToolNotice({ title, message }: { title: string; message: string }) {
  * `active` is false once the response has ended (e.g. after Stop), so pending
  * states are shown as cancelled instead of loading forever.
  */
+function toolStatusAnnouncement(part: AnalyzeResearchTopicPart, active: boolean): string {
+  switch (part.state) {
+    case "input-streaming":
+      return active ? "Preparing research analysis." : "Research analysis cancelled.";
+    case "input-available":
+      return active ? "Analyzing research topic." : "Research analysis cancelled.";
+    case "output-available":
+      return "Research analysis complete.";
+    case "output-error":
+      return "Research analysis failed.";
+    case "approval-requested":
+    case "approval-responded":
+    case "output-denied":
+      return "Research analysis not run.";
+  }
+}
+
 export function ResearchToolPart({
   part,
   active,
@@ -84,17 +101,21 @@ export function ResearchToolPart({
   part: AnalyzeResearchTopicPart;
   active: boolean;
 }) {
+  const announcement = toolStatusAnnouncement(part, active);
+
+  let content: ReactNode;
   switch (part.state) {
     case "input-streaming":
-      return active ? (
+      content = active ? (
         <ToolStatus busy title="Preparing research analysis">
           {part.input?.topic ? <ToolInputDetails topic={part.input.topic} /> : null}
         </ToolStatus>
       ) : (
         <ToolStatus tone="muted" busy={false} title="Research analysis cancelled" />
       );
+      break;
     case "input-available":
-      return (
+      content = (
         <ToolStatus
           tone={active ? "default" : "muted"}
           busy={active}
@@ -103,16 +124,18 @@ export function ResearchToolPart({
           <ToolInputDetails topic={part.input.topic} researchGoal={part.input.researchGoal} />
         </ToolStatus>
       );
+      break;
     case "output-available": {
       // The stream is not validated client-side, so check the shape before rendering it.
       const parsed = analyzeResearchTopicOutputSchema.safeParse(part.output);
       if (!parsed.success) {
-        return (
+        content = (
           <ToolNotice
             title="Analysis result unavailable"
             message="The research analysis returned data in an unexpected format, so it can't be displayed."
           />
         );
+        break;
       }
       const analysis = parsed.data;
       if (
@@ -120,24 +143,37 @@ export function ResearchToolPart({
         analysis.recommendedNextSteps.length === 0 &&
         analysis.summary.trim() === ""
       ) {
-        return (
+        content = (
           <ToolNotice
             title="No analysis results"
             message={`The analysis of “${analysis.topic}” didn't produce any findings. Try a more specific topic or add your research goal.`}
           />
         );
+        break;
       }
-      return <ResearchAnalysisCard analysis={analysis} />;
+      content = <ResearchAnalysisCard analysis={analysis} />;
+      break;
     }
     case "output-error":
-      return (
+      content = (
         <ToolError message={part.errorText || "The analysis could not be completed."} />
       );
+      break;
     case "approval-requested":
     case "approval-responded":
     case "output-denied":
-      return (
+      content = (
         <ToolStatus tone="muted" busy={false} title="Research analysis not run" />
       );
+      break;
   }
+
+  return (
+    <>
+      <p role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {announcement}
+      </p>
+      {content}
+    </>
+  );
 }
