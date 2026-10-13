@@ -1,7 +1,7 @@
 import type {
   ResearchAnalysis,
   ResearchComplexity,
-} from "@/lib/ai/tools/analyze-research-topic";
+} from "@/lib/ai/tools/research-analysis-schema";
 
 const COMPLEXITY_STYLES: Record<ResearchComplexity, string> = {
   low: "bg-success-soft text-success",
@@ -61,7 +61,11 @@ export function ResearchAnalysisCard({ analysis }: { analysis: ResearchAnalysis 
         </div>
       </dl>
 
-      <p className="mt-4 text-sm leading-relaxed [overflow-wrap:anywhere]">{summary}</p>
+      {summary.trim() ? (
+        <p className="mt-4 text-sm leading-relaxed [overflow-wrap:anywhere]">{summary}</p>
+      ) : (
+        <p className="mt-4 text-sm text-muted">No summary was returned for this topic.</p>
+      )}
 
       <AnalysisList title="Key questions" items={analysis.keyQuestions} ordered={false} />
       <AnalysisList title="Recommended next steps" items={analysis.recommendedNextSteps} ordered />
@@ -82,13 +86,17 @@ function AnalysisList({
   return (
     <section className="mt-4">
       <h4 className="text-sm font-semibold">{title}</h4>
-      <List
-        className={`mt-2 space-y-1.5 pl-5 text-sm leading-relaxed [overflow-wrap:anywhere] ${ordered ? "list-decimal" : "list-disc"}`}
-      >
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </List>
+      {items.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">None suggested for this topic.</p>
+      ) : (
+        <List
+          className={`mt-2 space-y-1.5 pl-5 text-sm leading-relaxed [overflow-wrap:anywhere] ${ordered ? "list-decimal" : "list-disc"}`}
+        >
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </List>
+      )}
     </section>
   );
 }

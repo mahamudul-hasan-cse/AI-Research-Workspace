@@ -66,3 +66,55 @@ the system prompt in `src/lib/ai/config.ts`.
 (`src/components/assistant/research-tool-part.tsx`): "Preparing research
 analysis" while the input streams, the parsed topic and goal while it runs, a
 `ResearchAnalysisCard` with the result, or a designed error card on failure.
+
+The tool's Zod schemas live in `src/lib/ai/tools/research-analysis-schema.ts`
+so the client can re-validate results before rendering them.
+
+## Error and Edge-State Handling
+
+The `/assistant` chat (`src/components/assistant/chat.tsx`) handles these
+states deliberately:
+
+| State                        | Behavior                                                                                                   |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| First run                    | Designed empty state with three example prompts; picking one fills the input (it is not sent).             |
+| Empty / whitespace input     | Nothing is sent; an inline "Type a message before sending." hint appears and clears when you type.         |
+| Slow response                | A skeleton shaped like an assistant message appears at once; after 8 s it adds a "still working" note.     |
+| Network failure before reply | "Message not delivered" card under your message, with Retry.                                              |
+| Failure mid-stream           | The partial answer is kept and a "Response interrupted" card is attached inside that reply, with Retry.    |
+| Rate limit / quota           | "Usage limit reached" with the mapped quota message; the input stays usable and drafts are kept.          |
+| Tool failure                 | The structured "Research analysis failed" card; the conversation continues normally.                      |
+| Empty tool result            | "No analysis results" notice, or per-section "None suggested" text when only some fields are empty.        |
+| Malformed tool result        | "Analysis result unavailable" notice instead of raw data. The server turns it into a tool error in history so later turns still validate. |
+| Render crash                 | `src/app/assistant/error.tsx` (and `src/app/error.tsx` for other routes) shows a recovery card with Try again and Go to home. |
+
+`src/app/assistant/loading.tsx` shows a chat-shaped skeleton while the route
+loads.
+
+**Retry** calls the AI SDK's `regenerate()`, which re-runs only the failed
+turn: it resends the last user message, or replaces a partial reply.
+Earlier messages are untouched. The button is hidden while a request is in
+flight and guarded against double clicks, so one click is one request.
+
+**Testing failures (development/testing only).** `src/lib/testing/` contains
+a failure-injection hook that is active only in `next dev` or in a build made
+with `NEXT_PUBLIC_ENABLE_CHAT_SABOTAGE=1`. `next.config.ts` inlines the flag at
+build time, so a normal production build drops the server-side scenarios and
+the client hooks are inert; setting the variable at runtime has no effect.
+Add `?sabotage=` to `/assistant` with
+a comma-separated list; each chat request consumes the next mode:
+
+| Mode             | Simulates                                       |
+| ---------------- | ----------------------------------------------- |
+| `network`        | `fetch` rejects before reaching the server      |
+| `midstream`      | Partial text, then a stream error               |
+| `rate-limit`     | The mapped Gemini quota (429) error             |
+| `malformed-tool` | A tool result that does not match its schema    |
+| `empty-tool`     | A valid tool result with no findings            |
+| `slow`           | ~9 s before the first token                     |
+| `mock`           | A successful reply without calling Gemini       |
+| `render`         | The chat component throws, to test `error.tsx`  |
+
+For example, `/assistant?sabotage=midstream,mock` fails the first reply
+midway and lets the retry succeed. Simulated modes never call Gemini, so they
+use no quota.

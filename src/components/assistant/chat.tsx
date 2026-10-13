@@ -7,13 +7,26 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import type { AnalyzeResearchTopicPart, ResearchUIMessage } from "@/lib/ai/tools";
+import {
+  CHAT_SABOTAGE_ENABLED,
+  isSabotagePending,
+  sabotageFetch,
+  throwRenderSabotage,
+} from "@/lib/testing/chat-sabotage";
+import { ChatFailureNotice, describeChatFailure } from "./chat-failure";
+import { ChatEmptyState, ResponseSkeleton } from "./chat-states";
 import { ResearchToolPart } from "./research-tool-part";
 
-const transport = new DefaultChatTransport<ResearchUIMessage>({ api: "/api/chat" });
+const transport = new DefaultChatTransport<ResearchUIMessage>({
+  api: "/api/chat",
+  ...(CHAT_SABOTAGE_ENABLED ? { fetch: sabotageFetch } : {}),
+});
 
 /** Distance (px) from the bottom within which the view stays pinned to new content. */
 const PIN_THRESHOLD = 80;
@@ -52,23 +65,36 @@ function isNearBottom(element: HTMLElement) {
   );
 }
 
+const subscribeNever = () => () => {};
+
 export function Chat() {
+  // Test-only: lets /assistant?sabotage=render exercise the route error boundary.
+  const renderSabotage = useSyncExternalStore(
+    subscribeNever,
+    () => isSabotagePending("render"),
+    () => false,
+  );
+  if (renderSabotage) throwRenderSabotage();
+
   // An explicit id keeps useChat from calling Math.random() during prerender.
   const chatId = useId();
-  const { messages, sendMessage, status, stop, error, clearError } =
+  const { messages, sendMessage, regenerate, status, stop, error, clearError } =
     useChat<ResearchUIMessage>({
       id: chatId,
       transport,
     });
   const [input, setInput] = useState("");
+  const [emptyHint, setEmptyHint] = useState(false);
   const [showJump, setShowJump] = useState(false);
   const [stopped, setStopped] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pinnedRef = useRef(true);
+  const retryingRef = useRef(false);
   const inputId = useId();
   const hintId = useId();
+  const feedbackId = useId();
 
   const busy = status === "submitted" || status === "streaming";
   const lastMessage = messages.at(-1);
@@ -80,6 +106,13 @@ export function Chat() {
   const waitingForText =
     busy && (lastSegment === undefined || (lastSegment.kind === "tool" && !analyzing));
   const canSend = !busy && input.trim().length > 0;
+
+  const failure =
+    status === "error" && error
+      ? describeChatFailure(error, lastSegments.some((segment) => segment.kind === "text"))
+      : undefined;
+  // A failed turn with partial content keeps it, with the failure attached below.
+  const failureInline = failure !== undefined && lastSegments.length > 0;
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -106,12 +139,30 @@ export function Chat() {
 
   function submit() {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text) {
+      setEmptyHint(true);
+      inputRef.current?.focus();
+      return;
+    }
+    if (busy) return;
     if (error) clearError();
     setStopped(false);
     setInput("");
     jumpToLatest();
     void sendMessage({ text });
+  }
+
+  /** Re-runs only the failed turn: resends the last user message, or replaces a partial reply. */
+  async function retry() {
+    if (busy || retryingRef.current) return;
+    retryingRef.current = true;
+    setStopped(false);
+    jumpToLatest();
+    try {
+      await regenerate();
+    } finally {
+      retryingRef.current = false;
+    }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -136,11 +187,25 @@ export function Chat() {
     inputRef.current?.focus();
   }
 
+  function pickPrompt(prompt: string) {
+    setInput(prompt);
+    setEmptyHint(false);
+    inputRef.current?.focus();
+  }
+
+  const failureNotice = failure ? (
+    <ChatFailureNotice
+      failure={failure}
+      onRetry={() => void retry()}
+      retryDisabled={busy}
+    />
+  ) : null;
+
   let statusMessage = "";
   if (status === "submitted") statusMessage = "Assistant is thinking.";
   else if (analyzing) statusMessage = "Assistant is analyzing the research topic.";
   else if (status === "streaming") statusMessage = "Assistant is responding.";
-  else if (status === "error") statusMessage = "The assistant response failed.";
+  else if (failure) statusMessage = failure.title;
   else if (stopped) statusMessage = "Response stopped.";
   else if (lastMessage?.role === "assistant") {
     statusMessage = "Assistant finished responding.";
@@ -149,7 +214,7 @@ export function Chat() {
   return (
     <section
       aria-label="Research assistant chat"
-      className="flex h-[calc(100dvh-15rem)] min-h-[26rem] flex-col overflow-hidden rounded-card border border-border bg-surface sm:h-[calc(100dvh-17rem)]"
+      className="flex h-[calc(100dvh-15rem)] min-h-[20rem] flex-col overflow-hidden rounded-card border border-border bg-surface sm:h-[calc(100dvh-17rem)]"
     >
       <p role="status" className="sr-only">
         {statusMessage}
@@ -165,44 +230,28 @@ export function Chat() {
           className="h-full overflow-x-hidden overflow-y-auto px-3 py-4 sm:px-6"
         >
           {messages.length === 0 ? (
-            <div className="mx-auto flex h-full max-w-md flex-col items-center justify-center text-center">
-              <p className="text-base font-semibold">
-                Start a research conversation
-              </p>
-              <p className="mt-2 text-sm text-muted">
-                Ask about a topic, paste notes to summarize, or describe an idea
-                you want to organize. The assistant only knows sources you
-                share in the chat.
-              </p>
-            </div>
+            <ChatEmptyState onPickPrompt={pickPrompt} />
           ) : (
             <ol className="mx-auto flex max-w-3xl flex-col gap-4">
               {messages.map((message) => {
                 const segments = toSegments(message);
                 if (segments.length === 0) return null;
+                const isLast = message.id === lastMessage?.id;
                 return message.role === "user" ? (
                   <UserMessage key={message.id} segments={segments} />
                 ) : (
                   <AssistantMessage
                     key={message.id}
                     segments={segments}
-                    active={busy && message.id === lastMessage?.id}
+                    active={busy && isLast}
+                    footer={isLast && failureInline ? failureNotice : null}
                   />
                 );
               })}
-              {waitingForText ? (
+              {waitingForText ? <ResponseSkeleton /> : null}
+              {failure && !failureInline ? (
                 <li className="flex justify-start">
-                  <div className="rounded-2xl rounded-bl-sm border border-border bg-surface-muted px-4 py-3 text-sm text-muted">
-                    <span className="sr-only">Assistant is thinking</span>
-                    <span aria-hidden="true" className="flex items-center gap-2">
-                      Thinking
-                      <span className="flex gap-1">
-                        <span className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" />
-                        <span className="size-1.5 rounded-full bg-current motion-safe:animate-pulse [animation-delay:150ms]" />
-                        <span className="size-1.5 rounded-full bg-current motion-safe:animate-pulse [animation-delay:300ms]" />
-                      </span>
-                    </span>
-                  </div>
+                  <div className="w-full max-w-md">{failureNotice}</div>
                 </li>
               ) : null}
             </ol>
@@ -220,53 +269,57 @@ export function Chat() {
         ) : null}
       </div>
 
-      {error ? (
-        <div
-          role="alert"
-          className="border-t border-border bg-danger-soft px-3 py-2 text-sm text-danger sm:px-6"
-        >
-          {error.message || "Something went wrong. Please try again."}
-        </div>
-      ) : null}
-
       <form
         onSubmit={handleSubmit}
-        className="flex items-end gap-2 border-t border-border bg-surface p-3 sm:p-4"
+        className="border-t border-border bg-surface p-3 sm:p-4"
       >
-        <label htmlFor={inputId} className="sr-only">
-          Message the research assistant
-        </label>
-        <textarea
-          ref={inputRef}
-          id={inputId}
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={2}
-          aria-describedby={hintId}
-          placeholder="Ask about a research topic…"
-          className="max-h-40 min-h-11 min-w-0 flex-1 resize-y rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm"
-        />
-        <p id={hintId} className="sr-only">
-          Press Enter to send and Shift plus Enter for a new line.
+        <p
+          id={feedbackId}
+          aria-live="polite"
+          className={emptyHint ? "mb-2 text-xs font-medium text-danger" : "sr-only"}
+        >
+          {emptyHint ? "Type a message before sending." : ""}
         </p>
-        {busy ? (
-          <button
-            type="button"
-            onClick={handleStop}
-            className="h-11 shrink-0 rounded-lg border border-border bg-surface px-4 text-sm font-semibold hover:bg-surface-muted"
-          >
-            Stop
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!canSend}
-            className="h-11 shrink-0 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Send
-          </button>
-        )}
+        <div className="flex items-end gap-2">
+          <label htmlFor={inputId} className="sr-only">
+            Message the research assistant
+          </label>
+          <textarea
+            ref={inputRef}
+            id={inputId}
+            value={input}
+            onChange={(event) => {
+              setInput(event.target.value);
+              if (emptyHint) setEmptyHint(false);
+            }}
+            onKeyDown={handleKeyDown}
+            rows={2}
+            aria-describedby={`${hintId} ${feedbackId}`}
+            aria-invalid={emptyHint || undefined}
+            placeholder="Ask about a research topic…"
+            className="max-h-40 min-h-11 min-w-0 flex-1 resize-y rounded-lg border border-border bg-background px-3 py-2 text-base sm:text-sm"
+          />
+          <p id={hintId} className="sr-only">
+            Press Enter to send and Shift plus Enter for a new line.
+          </p>
+          {busy ? (
+            <button
+              type="button"
+              onClick={handleStop}
+              className="h-11 shrink-0 rounded-lg border border-border bg-surface px-4 text-sm font-semibold hover:bg-surface-muted"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="submit"
+              aria-disabled={!canSend}
+              className="h-11 shrink-0 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-foreground hover:opacity-90 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+            >
+              Send
+            </button>
+          )}
+        </div>
       </form>
     </section>
   );
@@ -293,7 +346,15 @@ function UserMessage({ segments }: { segments: Segment[] }) {
   );
 }
 
-function AssistantMessage({ segments, active }: { segments: Segment[]; active: boolean }) {
+function AssistantMessage({
+  segments,
+  active,
+  footer,
+}: {
+  segments: Segment[];
+  active: boolean;
+  footer: ReactNode;
+}) {
   return (
     <li className="flex justify-start">
       <div className="flex max-w-full min-w-0 flex-col gap-3 rounded-2xl rounded-bl-sm border border-border bg-surface-muted px-4 py-3 sm:max-w-[90%]">
@@ -307,6 +368,7 @@ function AssistantMessage({ segments, active }: { segments: Segment[]; active: b
             <ResearchToolPart key={segment.key} part={segment.part} active={active} />
           ),
         )}
+        {footer}
       </div>
     </li>
   );

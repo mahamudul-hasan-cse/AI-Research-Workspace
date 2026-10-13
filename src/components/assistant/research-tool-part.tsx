@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { AnalyzeResearchTopicPart } from "@/lib/ai/tools";
+import { analyzeResearchTopicOutputSchema } from "@/lib/ai/tools/research-analysis-schema";
 import { ResearchAnalysisCard } from "./research-analysis-card";
 
 const TOOL_LABEL = "analyzeResearchTopic";
@@ -62,6 +63,15 @@ function ToolError({ message }: { message: string }) {
   );
 }
 
+function ToolNotice({ title, message }: { title: string; message: string }) {
+  return (
+    <div role="note" className="min-w-0 rounded-card border border-border bg-surface p-3 text-sm">
+      <p className="font-semibold">{title}</p>
+      <p className="mt-1 text-muted [overflow-wrap:anywhere]">{message}</p>
+    </div>
+  );
+}
+
 /**
  * Renders each lifecycle state of an analyzeResearchTopic tool call.
  * `active` is false once the response has ended (e.g. after Stop), so pending
@@ -93,8 +103,32 @@ export function ResearchToolPart({
           <ToolInputDetails topic={part.input.topic} researchGoal={part.input.researchGoal} />
         </ToolStatus>
       );
-    case "output-available":
-      return <ResearchAnalysisCard analysis={part.output} />;
+    case "output-available": {
+      // The stream is not validated client-side, so check the shape before rendering it.
+      const parsed = analyzeResearchTopicOutputSchema.safeParse(part.output);
+      if (!parsed.success) {
+        return (
+          <ToolNotice
+            title="Analysis result unavailable"
+            message="The research analysis returned data in an unexpected format, so it can't be displayed."
+          />
+        );
+      }
+      const analysis = parsed.data;
+      if (
+        analysis.keyQuestions.length === 0 &&
+        analysis.recommendedNextSteps.length === 0 &&
+        analysis.summary.trim() === ""
+      ) {
+        return (
+          <ToolNotice
+            title="No analysis results"
+            message={`The analysis of “${analysis.topic}” didn't produce any findings. Try a more specific topic or add your research goal.`}
+          />
+        );
+      }
+      return <ResearchAnalysisCard analysis={analysis} />;
+    }
     case "output-error":
       return (
         <ToolError message={part.errorText || "The analysis could not be completed."} />

@@ -20,6 +20,11 @@ import {
 } from "@/lib/ai/config";
 import { toClientErrorMessage } from "@/lib/ai/errors";
 import { researchTools, type ResearchUIMessage } from "@/lib/ai/tools";
+import {
+  ANALYZE_RESEARCH_TOPIC,
+  analyzeResearchTopicOutputSchema,
+} from "@/lib/ai/tools/research-analysis-schema";
+import { sabotageResponse } from "@/lib/testing/chat-sabotage-server";
 
 export const maxDuration = 60;
 
@@ -28,6 +33,35 @@ function textError(message: string, status: number) {
   return new Response(message, {
     status,
     headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * A tool result that fails its output schema would make the whole history
+ * invalid and block every later turn, so it is kept as a tool error instead.
+ */
+function repairToolOutputs(messages: unknown): unknown {
+  if (!Array.isArray(messages)) return messages;
+  return messages.map((message: unknown) => {
+    if (!isRecord(message) || !Array.isArray(message.parts)) return message;
+    const parts = message.parts.map((part: unknown) =>
+      isRecord(part) &&
+      part.type === `tool-${ANALYZE_RESEARCH_TOPIC}` &&
+      part.state === "output-available" &&
+      !analyzeResearchTopicOutputSchema.safeParse(part.output).success
+        ? {
+            ...part,
+            state: "output-error",
+            output: undefined,
+            errorText: "The research analysis returned malformed data.",
+          }
+        : part,
+    );
+    return { ...message, parts };
   });
 }
 
@@ -54,7 +88,7 @@ export async function POST(req: Request) {
   }
 
   const validation = await safeValidateUIMessages<ResearchUIMessage>({
-    messages: (body as { messages?: unknown } | null)?.messages,
+    messages: repairToolOutputs((body as { messages?: unknown } | null)?.messages),
     tools: researchTools,
   });
   if (!validation.success) {
@@ -81,6 +115,10 @@ export async function POST(req: Request) {
       413,
     );
   }
+
+  // Test-only failure injection; always undefined in normal production builds.
+  const sabotaged = sabotageResponse(req);
+  if (sabotaged) return sabotaged;
 
   const result = streamText({
     model: google(GEMINI_MODEL_ID),
