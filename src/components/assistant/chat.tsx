@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { Square } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -22,6 +23,7 @@ import {
 import { ChatFailureNotice, describeChatFailure } from "./chat-failure";
 import { ChatEmptyState, ResponseSkeleton } from "./chat-states";
 import { ResearchToolPart } from "./research-tool-part";
+import { SendButton, type SendButtonState } from "./send-button";
 
 const transport = new DefaultChatTransport<ResearchUIMessage>({
   api: "/api/chat",
@@ -30,6 +32,10 @@ const transport = new DefaultChatTransport<ResearchUIMessage>({
 
 /** Distance (px) from the bottom within which the view stays pinned to new content. */
 const PIN_THRESHOLD = 80;
+
+/** How long the Send button holds its success / error state before returning to idle. */
+const SEND_SUCCESS_MS = 1200;
+const SEND_ERROR_MS = 2400;
 
 type Segment =
   | { kind: "text"; key: string; text: string }
@@ -92,6 +98,7 @@ export function Chat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pinnedRef = useRef(true);
   const retryingRef = useRef(false);
+  const sendingRef = useRef(false);
   const inputId = useId();
   const hintId = useId();
   const feedbackId = useId();
@@ -106,6 +113,29 @@ export function Chat() {
   const waitingForText =
     busy && (lastSegment === undefined || (lastSegment.kind === "tool" && !analyzing));
   const canSend = !busy && input.trim().length > 0;
+
+  // Brief success/error feedback on the Send button when a request ends; a
+  // response the user stopped ends quietly. Derived during render from the
+  // status change, then cleared by the timer below.
+  const [sendFlash, setSendFlash] = useState<"success" | "error" | null>(null);
+  const [prevStatus, setPrevStatus] = useState(status);
+  if (status !== prevStatus) {
+    setPrevStatus(status);
+    const wasBusy = prevStatus === "submitted" || prevStatus === "streaming";
+    if (status === "error") setSendFlash("error");
+    else if (status === "ready" && wasBusy) setSendFlash(stopped ? null : "success");
+    else setSendFlash(null);
+  }
+  const sendState: SendButtonState = busy ? "loading" : (sendFlash ?? "idle");
+
+  useEffect(() => {
+    if (!sendFlash) return;
+    const timer = setTimeout(
+      () => setSendFlash(null),
+      sendFlash === "success" ? SEND_SUCCESS_MS : SEND_ERROR_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [sendFlash]);
 
   const failure =
     status === "error" && error
@@ -138,18 +168,23 @@ export function Chat() {
   }
 
   function submit() {
+    // Checked first so repeated clicks during a send are ignored silently.
+    if (busy || sendingRef.current) return;
     const text = input.trim();
     if (!text) {
       setEmptyHint(true);
       inputRef.current?.focus();
       return;
     }
-    if (busy) return;
     if (error) clearError();
     setStopped(false);
     setInput("");
     jumpToLatest();
-    void sendMessage({ text });
+    // Covers the moment between this click and useChat reporting "submitted".
+    sendingRef.current = true;
+    void sendMessage({ text }).finally(() => {
+      sendingRef.current = false;
+    });
   }
 
   /** Re-runs only the failed turn: resends the last user message, or replaces a partial reply. */
@@ -306,19 +341,13 @@ export function Chat() {
             <button
               type="button"
               onClick={handleStop}
-              className="h-11 shrink-0 rounded-lg border border-border bg-surface px-4 text-sm font-semibold hover:bg-surface-muted"
+              className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-semibold duration-150 animate-in fade-in-0 hover:bg-surface-muted motion-safe:zoom-in-90 sm:px-4"
             >
-              Stop
+              <Square aria-hidden="true" className="size-3.5 fill-current" />
+              <span className="max-sm:sr-only">Stop</span>
             </button>
-          ) : (
-            <button
-              type="submit"
-              aria-disabled={!canSend}
-              className="h-11 shrink-0 rounded-lg bg-accent px-4 text-sm font-semibold text-accent-foreground hover:opacity-90 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-            >
-              Send
-            </button>
-          )}
+          ) : null}
+          <SendButton state={sendState} canSend={canSend} />
         </div>
       </form>
     </section>

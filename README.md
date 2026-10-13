@@ -78,6 +78,20 @@ analysis" while the input streams, the parsed topic and goal while it runs, a
 The tool's Zod schemas live in `src/lib/ai/tools/research-analysis-schema.ts`
 so the client can re-validate results before rendering them.
 
+## Send Button Motion
+
+The assistant's Send button (`src/components/assistant/send-button.tsx`) moves
+through idle, loading ("Replying"), success ("Sent", held 1.2 s) and error
+("Failed", held 2.4 s), each with its own icon and label, so state never relies
+on color alone. Labels cross-fade over 200 ms on `cubic-bezier(0.2, 0, 0, 1)`
+(fast start, gentle settle), hover and press feedback take 150 ms and 75 ms,
+and all labels share one grid cell so the button keeps a fixed width. Only
+`opacity` and `transform` (`translate`/`scale`) are animated, including the
+success/error fills, which are opacity overlays, so changes run on the
+compositor without layout or repaint work. With `prefers-reduced-motion:
+reduce`, all movement is removed (no slide, lift, press-scale or spinning
+icon) and only the short opacity cross-fade remains.
+
 ## Error and Edge-State Handling
 
 The `/assistant` chat (`src/components/assistant/chat.tsx`) handles these

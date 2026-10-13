@@ -27,6 +27,9 @@
   --success-soft: #ecfdf5;
   --danger: #dc2626;
   --danger-soft: #fef2f2;
+  /* Solid fills behind --accent-foreground text (4.5:1 contrast). */
+  --success-strong: #047857;
+  --danger-strong: #b91c1c;
 
   --radius-card: 0.75rem;
   --header-height: 4rem;
@@ -62,6 +65,8 @@
     --success-soft: #052e22;
     --danger: #f87171;
     --danger-soft: #2a0f12;
+    --success-strong: #34d399;
+    --danger-strong: #f87171;
   }
 }
 
@@ -94,6 +99,8 @@
   --color-success-soft: var(--success-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-success-strong: var(--success-strong);
+  --color-danger-strong: var(--danger-strong);
   --radius-card: var(--radius-card);
   --spacing-header: var(--header-height);
   --font-sans: var(--font-geist-sans);
