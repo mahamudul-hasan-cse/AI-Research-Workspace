@@ -141,6 +141,39 @@ For example, `/assistant?sabotage=midstream,mock` fails the first reply
 midway and lets the retry succeed. Simulated modes never call OpenRouter, so they
 cost nothing.
 
+## 3D Research Topic Explorer
+
+The `/visualize` route shows a **3D Research Topic Explorer**: a central thesis
+topic with connected nodes for sources, questions, notes, findings, and related
+themes. Click a sphere (or a list item) to select a node; the same title, type,
+and details appear in a normal DOM panel beside the canvas. **Reset view**
+returns the camera to its default angle. Data is deterministic and local
+(`src/lib/visualize/topic-graph-data.ts`) — no extra API.
+
+**Libraries:** [React Three Fiber](https://docs.pmnd.rs/react-three-fiber),
+[Three.js](https://threejs.org/), and
+[@react-three/drei](https://github.com/pmndrs/drei) (`OrbitControls`, `Line`).
+Procedural spheres and lines only — no GLB assets.
+
+**Bundle impact:** the 3D code is lazy-loaded with `next/dynamic` (`ssr: false`),
+so other routes do not pay for Three.js up front. After `npm run build`, the
+lazy Three.js chunk is about **951 KB minified** (about **280 KB gzip**), dominated by
+`three` and `@react-three/drei`. The `/visualize` page shell loads separately;
+exact hashes change each build — search `.next/static/chunks/` for the dynamic
+import after building.
+
+**Performance choices:** small low-segment sphere geometry, capped device pixel
+ratio (`dpr` max 1.75), selection state kept in React (not per-frame), edges
+precomputed with `useMemo`, and no external models.
+
+**Fallbacks:** if WebGL is missing, a static map and the same node list are
+shown. With `prefers-reduced-motion: reduce`, orbit damping is disabled and
+rotate speed is lowered; status text explains the change.
+
+**With more time:** instanced meshes for many nodes, keyboard focus rings tied
+to 3D selection, gentle layout animation only when motion is allowed, and
+optional import of a real workspace graph from saved research data.
+
 ## Testing
 
 No test calls OpenRouter or any other AI service, and none needs an API key.

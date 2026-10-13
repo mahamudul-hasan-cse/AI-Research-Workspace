@@ -7,6 +7,7 @@ export const navItems: NavItem[] = [
   { href: "/", label: "Home" },
   { href: "/workspaces", label: "Workspaces" },
   { href: "/assistant", label: "Assistant" },
+  { href: "/visualize", label: "Visualize" },
   { href: "/sources", label: "Sources" },
   { href: "/saved", label: "Saved" },
   { href: "/history", label: "History" },
