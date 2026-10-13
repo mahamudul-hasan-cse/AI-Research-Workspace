@@ -1,5 +1,10 @@
 import { connection } from "next/server";
-import { getAppUrl, type HealthPayload } from "@/lib/health";
+import {
+  getAppUrl,
+  getSelfFetchHeaders,
+  readHealthResponse,
+  type HealthPayload,
+} from "@/lib/health";
 
 type HealthResult =
   | { ok: true; data: HealthPayload; latencyMs: number; url: string }
@@ -13,12 +18,12 @@ async function checkHealth(): Promise<HealthResult> {
   try {
     const res = await fetch(url, {
       cache: "no-store",
+      headers: getSelfFetchHeaders(),
+      // A redirect here means the request never reached the route handler.
+      redirect: "manual",
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) {
-      return { ok: false, error: `HTTP ${res.status}`, url };
-    }
-    const data = (await res.json()) as HealthPayload;
+    const data = await readHealthResponse(res);
     return {
       ok: true,
       data,
