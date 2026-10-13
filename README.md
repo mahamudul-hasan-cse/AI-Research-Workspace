@@ -140,3 +140,38 @@ a comma-separated list; each chat request consumes the next mode:
 For example, `/assistant?sabotage=midstream,mock` fails the first reply
 midway and lets the retry succeed. Simulated modes never call OpenRouter, so they
 cost nothing.
+
+## Testing
+
+No test calls OpenRouter or any other AI service, and none needs an API key.
+
+| Command                 | Runs                                                        |
+| ----------------------- | ----------------------------------------------------------- |
+| `npm test`              | Vitest component and integration tests (jsdom), once        |
+| `npm run test:watch`    | Vitest in watch mode                                        |
+| `npm run test:coverage` | Vitest with V8 coverage (text summary + `coverage/` HTML)   |
+| `npm run test:e2e`      | Playwright end-to-end test in Chromium                      |
+| `npm run typecheck`     | `tsc --noEmit`                                              |
+
+**Component tests** (`src/**/*.test.tsx`, setup in `src/test/setup.ts`) use
+React Testing Library and query by role, accessible name or visible text. They
+cover the chat's pending, streaming, error and Retry states, the Send button
+states, the research analysis card, and the validated "Create workspace" form
+from the playground. Chat tests replace `fetch` with a hand-driven stream in
+the AI SDK's UI message format (`src/test/chat-stream.ts`), so each
+intermediate state is checked without timers; any fetch a test has not mocked
+fails the test.
+
+**End-to-end test** (`e2e/assistant.spec.ts`) builds the app with the test-only
+sabotage hooks (`NEXT_PUBLIC_ENABLE_CHAT_SABOTAGE=1`) and a placeholder key,
+starts it on port 3100, then asks a question on `/assistant`, watches the
+scripted reply stream in, triggers a mid-stream failure and recovers with
+Retry. It aborts any chat request without a scripted reply. Because it
+rebuilds `.next` with the test hooks, run `npm run build` again before
+`npm start` if you want a normal production build locally. First run:
+`npx playwright install chromium`.
+
+**CI** (`.github/workflows/ci.yml`) runs on every push and pull request:
+`npm ci`, lint, typecheck, Vitest, production build, then Playwright (Chromium
+and its system dependencies are installed, with the browser cached). The
+Playwright report is uploaded when the job fails.
