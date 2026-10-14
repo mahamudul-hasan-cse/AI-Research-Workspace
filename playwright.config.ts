@@ -14,9 +14,22 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // Keep one mandatory real-rendering project so capability-aware tests cannot
+    // accidentally pass the entire suite on fallbacks alone.
+    { name: "chromium", metadata: { requireWebGL: true }, use: { ...devices["Desktop Chrome"] } },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    {
+      name: "firefox-no-webgl",
+      testMatch: ["**/home-hero.spec.ts", "**/visualize.spec.ts"],
+      metadata: { requireWebGLFallback: true },
+      use: {
+        ...devices["Desktop Firefox"],
+        // Disable the real browser feature to cover the CI failure path locally;
+        // do not mock getContext or alter the application's support detection.
+        launchOptions: { firefoxUserPrefs: { "webgl.disabled": true } },
+      },
+    },
   ],
   webServer: {
     // A production build with the test-only chat sabotage hooks compiled in,
