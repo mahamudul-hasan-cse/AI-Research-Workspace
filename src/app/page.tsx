@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PageShell } from "@/components/page-shell";
+import { HomeHero } from "@/components/home/home-hero";
 import { navItems } from "@/lib/navigation";
 
 const descriptions: Record<string, string> = {
@@ -18,24 +18,31 @@ export default function HomePage() {
   const sections = navItems.filter((item) => item.href !== "/");
 
   return (
-    <PageShell
-      title="AI Research Workspace"
-      description="Organize research projects, gather sources, and work with an AI assistant — all in one place. This is the initial skeleton; features will land in upcoming milestones."
-    >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {sections.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="group rounded-card border border-border bg-surface p-5 transition-colors hover:border-accent"
-          >
-            <h2 className="font-semibold group-hover:text-accent">
-              {item.label}
-            </h2>
-            <p className="mt-1 text-sm text-muted">{descriptions[item.href]}</p>
-          </Link>
-        ))}
-      </div>
-    </PageShell>
+    <>
+      <HomeHero />
+      <section
+        aria-labelledby="workspace-sections-title"
+        className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16"
+      >
+        <h2 id="workspace-sections-title" className="text-xl font-bold tracking-tight sm:text-2xl">
+          Explore the workspace
+        </h2>
+        <p className="mt-2 text-sm text-muted sm:text-base">
+          Organize research projects, gather sources, and work with an AI assistant.
+        </p>
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {sections.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="group rounded-card border border-border bg-surface p-5 transition-colors hover:border-accent"
+            >
+              <h3 className="font-semibold group-hover:text-accent">{item.label}</h3>
+              <p className="mt-1 text-sm text-muted">{descriptions[item.href]}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }

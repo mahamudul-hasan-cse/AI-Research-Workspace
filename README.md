@@ -176,6 +176,76 @@ rotate speed is lowered; status text explains the change.
 to 3D selection, gentle layout animation only when motion is allowed, and
 optional import of a real workspace graph from saved research data.
 
+## Signature Shader Hero
+
+The home page opens with **Research Signal Field**, a fullscreen fragment
+shader behind the real hero content ("AI Research Workspace", a one-line
+description, and **Open Assistant** / **Explore Research** links).
+
+**What it represents:** slow, warped noise is the raw material of research —
+sources, notes, half-formed ideas — drifting in deep navy, indigo, and violet.
+Thin bright bands trace along the contours of that field: the signals you pull
+out of it. Moving the pointer bends the field around a soft lens of light, as
+if focusing attention on one part of the material.
+
+**Uniforms** (`src/lib/shader/signal-field-shader.ts`):
+
+| Uniform        | Meaning                                                                 |
+| -------------- | ----------------------------------------------------------------------- |
+| `u_time`       | Seconds of visible animation; drives drift, warping, and band movement  |
+| `u_resolution` | Canvas size in device pixels; normalizes coordinates so shapes never stretch |
+| `u_mouse`      | Eased pointer position in device pixels; centers the lens and its glow  |
+
+**Shader logic:** coordinates are centered and divided by the short side; the
+pointer goes through the same transform. Two layers of fractal value noise
+(fbm) warp a third layer (domain warping), which gives the slow, flowing field.
+A sine of the field produces thin contour bands that move over time. The
+pointer lens is a Gaussian falloff that pushes nearby coordinates aside and
+adds a little light. Colors mix navy → indigo by field height and add violet
+from the warp, then a vignette is applied and every channel is clamped to
+`SIGNAL_COLOR_CAP`.
+
+**Readable text by construction:** the brightest color the shader can output
+is capped, and a fixed navy scrim (alpha 0.45) sits between the canvas and the
+text. `src/lib/shader/signal-field-palette.test.ts` checks the worst case: white
+headings are about 10:1 and the light-indigo body text is about 8:1 (WCAG AA
+needs 4.5:1). Hero buttons use white focus rings, which stand out on navy far
+better than the theme accent.
+
+**Performance choices:**
+
+- A small raw WebGL1 renderer (~250 lines, no dependencies) drawing one oversized triangle — no Three.js or
+  R3F on the home page (those stay lazy-loaded on `/visualize` only).
+- Device pixel ratio is capped at **1.5**; `ResizeObserver` keeps the backing
+  store matched to the hero size.
+- `requestAnimationFrame` runs only while the tab is visible
+  (`visibilitychange`) **and** the hero is on screen (`IntersectionObserver`).
+  Paused time does not count, so the field resumes where it stopped.
+- Nothing per frame touches React: the loop lives in
+  `src/lib/shader/signal-field-renderer.ts`, and pointer movement is stored in
+  plain variables and eased inside the loop.
+- Unmount cancels the frame and removes every listener and observer, and
+  deletes the program, shaders, and buffer. Context loss pauses rendering and
+  context restore rebuilds it.
+- The canvas fades in after its first frame, so there is no flash of black.
+  The section's CSS gradient shows until then.
+
+**Reduced motion and fallbacks:** with `prefers-reduced-motion: reduce`, a
+single static frame is drawn and the pointer is ignored; it redraws only on
+resize. If WebGL is unavailable, the canvas stays hidden and the matching CSS
+gradient remains. In every case the heading, text, and links are normal DOM
+content, and the canvas is `aria-hidden`.
+
+**Debug hooks:** the canvas exposes `data-state` (`animating`, `paused`,
+`static`, `unsupported`) and `data-ready`, which the e2e tests use.
+
+**Original vs. reference:** written from scratch for this project. It uses
+well-known building blocks — a hash-based value noise, fbm, and domain warping
+in the style of Inigo Quilez's articles — but the composition is my own: the
+pointer lens, the contour signal bands, the palette, the brightness cap tied to
+a contrast test, and the visibility-aware renderer. No shader code was copied
+from Shadertoy or another project.
+
 ## Testing
 
 No test calls OpenRouter or any other AI service, and none needs an API key.

@@ -15,7 +15,7 @@ export function MainNav() {
 
   return (
     <>
-      <nav aria-label="Main" className="hidden lg:block">
+      <nav aria-label="Main" className="hidden xl:block">
         <ul className="flex items-center gap-1">
           {navItems.map((item) => {
             const active = isActive(pathname, item.href);
@@ -40,7 +40,7 @@ export function MainNav() {
 
       <button
         type="button"
-        className="inline-flex items-center justify-center rounded-md border border-border p-2 text-foreground lg:hidden"
+        className="inline-flex items-center justify-center rounded-md border border-border p-2 text-foreground xl:hidden"
         aria-controls="mobile-nav"
         aria-expanded={open}
         aria-label={open ? "Close menu" : "Open menu"}
@@ -67,7 +67,7 @@ export function MainNav() {
         <nav
           id="mobile-nav"
           aria-label="Main"
-          className="absolute inset-x-0 top-header border-b border-border bg-surface shadow-sm lg:hidden"
+          className="absolute inset-x-0 top-header border-b border-border bg-surface shadow-sm xl:hidden"
         >
           <ul className="mx-auto grid max-w-6xl gap-1 px-4 py-3 sm:grid-cols-2 sm:px-6">
             {navItems.map((item) => {
