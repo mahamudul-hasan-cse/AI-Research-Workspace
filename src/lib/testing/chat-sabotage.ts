@@ -23,6 +23,7 @@ export const SABOTAGE_MODES = [
   "empty-tool", // server: a valid tool result with no items
   "slow", // server: long delay before the first token, then a mock reply
   "mock", // server: a successful mock reply (no model call)
+  "tool", // server: real deterministic tool execution with scripted model framing
   "render", // client: the chat component throws while rendering
 ] as const;
 

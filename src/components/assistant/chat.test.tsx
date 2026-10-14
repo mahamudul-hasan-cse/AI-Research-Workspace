@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createChatStream, mockChatResponses, sentMessages } from "@/test/chat-stream";
 import { Chat } from "./chat";
@@ -22,6 +23,14 @@ function chatStatus() {
 }
 
 describe("Chat", () => {
+  it("keeps server-rendered input disabled until the client is hydrated", () => {
+    const serverMarkup = document.createElement("div");
+    serverMarkup.innerHTML = renderToString(<Chat />);
+    expect(serverMarkup.querySelector("textarea")).toBeDisabled();
+    const { input } = setup();
+    expect(input).toBeEnabled();
+  });
+
   it("shows the pending state after a send and ignores duplicate sends", async () => {
     const stream = createChatStream();
     const fetchMock = mockChatResponses(stream);

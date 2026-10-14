@@ -71,7 +71,4 @@ export const STREAM_SMOOTHING = {
 export const MAX_STEPS = 3;
 
 /** Request limits enforced by /api/chat to keep payloads and quota use bounded. */
-export const CHAT_LIMITS = {
-  maxMessages: 50,
-  maxMessageChars: 8000,
-} as const;
+export { CHAT_LIMITS } from "./chat-limits";

@@ -53,12 +53,16 @@ export function HomeHero() {
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href="/assistant"
+              // Explicit native tab stops also work with Windows WebKit's
+              // restricted implicit-link keyboard navigation preference.
+              tabIndex={0}
               className={`inline-flex h-11 items-center rounded-lg bg-white px-5 text-sm font-semibold text-indigo-950 transition-opacity hover:opacity-90 ${FOCUS_RING}`}
             >
               Open Assistant
             </Link>
             <Link
               href="/visualize"
+              tabIndex={0}
               className={`inline-flex h-11 items-center rounded-lg border border-white/50 px-5 text-sm font-semibold text-white transition-colors hover:bg-white/10 ${FOCUS_RING}`}
             >
               Explore Research

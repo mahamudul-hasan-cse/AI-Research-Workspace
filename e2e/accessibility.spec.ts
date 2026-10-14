@@ -11,6 +11,7 @@ test.describe("Accessibility smoke", () => {
 
   test("assistant composer controls are keyboard reachable", async ({ page }) => {
     await page.goto("/assistant");
+    await expect(page.getByRole("textbox", { name: "Message the research assistant" })).toBeEnabled();
     await page.getByRole("textbox", { name: "Message the research assistant" }).focus();
     await expect(page.getByRole("textbox", { name: "Message the research assistant" })).toBeFocused();
     await page.keyboard.press("Tab");

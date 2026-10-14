@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 
+if (process.env.VERCEL === "1" && process.env.NEXT_PUBLIC_ENABLE_CHAT_SABOTAGE === "1") {
+  throw new Error("Chat sabotage is test-only and must not be enabled on Vercel.");
+}
+
 const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,

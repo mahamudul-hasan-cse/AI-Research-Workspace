@@ -74,6 +74,9 @@ function isNearBottom(element: HTMLElement) {
 const subscribeNever = () => () => {};
 
 export function Chat() {
+  // SSR looks interactive before React attaches handlers. Keep the composer
+  // disabled until hydration so fast typing cannot be lost (notably in WebKit).
+  const hydrated = useSyncExternalStore(subscribeNever, () => true, () => false);
   // Test-only: lets /assistant?sabotage=render exercise the route error boundary.
   const renderSabotage = useSyncExternalStore(
     subscribeNever,
@@ -321,6 +324,7 @@ export function Chat() {
           </label>
           <textarea
             ref={inputRef}
+            disabled={!hydrated}
             id={inputId}
             value={input}
             onChange={(event) => {

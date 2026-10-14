@@ -5,6 +5,7 @@ import {
 } from "ai";
 import { toClientErrorMessage } from "@/lib/ai/errors";
 import type { ResearchUIMessage } from "@/lib/ai/tools";
+import { analyzeResearchTopic } from "@/lib/ai/tools/analyze-research-topic";
 import {
   CHAT_SABOTAGE_ENABLED,
   parseSabotageMode,
@@ -29,11 +30,14 @@ export function sabotageResponse(req: Request): Response | undefined {
 
 const wait = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+    if (signal.aborted) return resolve();
+    const finish = () => {
       clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
       resolve();
-    });
+    };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener("abort", finish, { once: true });
   });
 
 async function streamText(
@@ -58,6 +62,19 @@ async function runScenario(
 ) {
   writer.write({ type: "start-step" });
   switch (mode) {
+    case "tool": {
+      const toolCallId = "scripted-research-analysis";
+      const input = { topic: "microplastics in freshwater fish", researchGoal: "compare exposure in urban rivers" };
+      writer.write({ type: "tool-input-start", toolCallId, toolName: "analyzeResearchTopic" });
+      writer.write({ type: "tool-input-available", toolCallId, toolName: "analyzeResearchTopic", input });
+      await wait(400, signal);
+      if (signal.aborted) return;
+      writer.write({ type: "tool-output-available", toolCallId, output: analyzeResearchTopic(input) });
+      writer.write({ type: "finish-step" });
+      writer.write({ type: "start-step" });
+      await streamText(writer, "t2", "Start with a focused comparison of exposure in urban rivers. ", signal);
+      break;
+    }
     case "midstream":
       await streamText(writer, "t1", "This is a partial answer that will be interrupted before it finishes. ", signal);
       writer.write({ type: "error", errorText: toClientErrorMessage(new Error("simulated mid-stream failure")) });

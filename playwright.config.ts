@@ -13,11 +13,16 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+  ],
   webServer: {
     // A production build with the test-only chat sabotage hooks compiled in,
     // so the assistant can be driven by scripted replies instead of a model.
-    command: `npm run build && npm run start -- -p ${PORT}`,
+    // Avoid an extra npm wrapper around the long-lived server during teardown.
+    command: `npm run build && node node_modules/next/dist/bin/next start -p ${PORT}`,
     url: `http://localhost:${PORT}/assistant`,
     reuseExistingServer: false,
     timeout: 300_000,
@@ -26,6 +31,7 @@ export default defineConfig({
       // Satisfies the route's configuration check; it is not a valid key, so
       // even an unscripted request could never reach a paid model.
       OPENROUTER_API_KEY: "e2e-placeholder-not-a-real-key",
+      APP_URL: `http://localhost:${PORT}`,
     },
   },
 });

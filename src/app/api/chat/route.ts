@@ -9,7 +9,6 @@ import {
   toUIMessageStream,
 } from "ai";
 import {
-  CHAT_LIMITS,
   AI_MODEL_ID,
   GENERATION_CONFIG,
   MAX_STEPS,
@@ -19,6 +18,8 @@ import {
   SYSTEM_PROMPT,
 } from "@/lib/ai/config";
 import { toClientErrorMessage } from "@/lib/ai/errors";
+import { ChatRequestError, readChatRequest } from "@/lib/ai/chat-request";
+import { checkChatRateLimit } from "@/lib/ai/chat-rate-limit";
 import { researchTools, type ResearchUIMessage } from "@/lib/ai/tools";
 import {
   ANALYZE_RESEARCH_TOPIC,
@@ -29,10 +30,10 @@ import { sabotageResponse } from "@/lib/testing/chat-sabotage-server";
 export const maxDuration = 60;
 
 // Plain-text bodies: the chat client surfaces the response body as the error message.
-function textError(message: string, status: number) {
+function textError(message: string, status: number, headers?: HeadersInit) {
   return new Response(message, {
     status,
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", ...headers },
   });
 }
 
@@ -86,13 +87,6 @@ function markStoppedToolCalls(message: ResearchUIMessage): ResearchUIMessage {
   };
 }
 
-function messageLength(message: ResearchUIMessage) {
-  return message.parts.reduce(
-    (total, part) => total + (part.type === "text" ? part.text.length : 0),
-    0,
-  );
-}
-
 export async function POST(req: Request) {
   if (!process.env.OPENROUTER_API_KEY) {
     return textError(
@@ -101,41 +95,31 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: unknown;
+  // Count every configured request before parsing, including malformed requests.
+  const admission = checkChatRateLimit(req.headers);
+  if (!admission.allowed) {
+    return textError("Too many requests. Please wait a moment and try again.", 429, {
+      "Retry-After": String(admission.retryAfter),
+    });
+  }
+
+  let submittedMessages: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return textError("Request body must be valid JSON.", 400);
+    submittedMessages = await readChatRequest(req);
+  } catch (error) {
+    if (error instanceof ChatRequestError) return textError(error.message, error.status);
+    return textError("The request could not be read.", 400);
   }
 
   const validation = await safeValidateUIMessages<ResearchUIMessage>({
-    messages: repairToolOutputs((body as { messages?: unknown } | null)?.messages),
+    messages: repairToolOutputs(submittedMessages),
     tools: researchTools,
   });
   if (!validation.success) {
     return textError("Request must include a valid messages array.", 400);
   }
 
-  // System instructions come only from the server config, never from the client.
-  const messages = validation.data.filter(
-    (message) => message.role === "user" || message.role === "assistant",
-  );
-
-  if (messages.length === 0 || messages.at(-1)?.role !== "user") {
-    return textError("The last message must be from the user.", 400);
-  }
-  if (messages.length > CHAT_LIMITS.maxMessages) {
-    return textError(
-      `Conversations are limited to ${CHAT_LIMITS.maxMessages} messages. Reload the page to start a new one.`,
-      413,
-    );
-  }
-  if (messages.some((message) => messageLength(message) > CHAT_LIMITS.maxMessageChars)) {
-    return textError(
-      `Messages are limited to ${CHAT_LIMITS.maxMessageChars} characters.`,
-      413,
-    );
-  }
+  const messages = validation.data;
 
   // Test-only failure injection; always undefined in normal production builds.
   const sabotaged = sabotageResponse(req);
@@ -163,8 +147,10 @@ export async function POST(req: Request) {
       stream: result.stream,
       tools: researchTools,
       onError: (error) => {
-        console.error("[api/chat] stream error:", error);
-        return toClientErrorMessage(error);
+        const message = toClientErrorMessage(error);
+        // Provider errors may contain request details; log only the safe mapping.
+        console.error("[api/chat] stream error:", message);
+        return message;
       },
     }),
     // Drains the stream server-side so aborts are handled cleanly.
